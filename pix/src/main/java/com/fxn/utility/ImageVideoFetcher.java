@@ -102,7 +102,7 @@ public class ImageVideoFetcher extends AsyncTask<Cursor, Void, ImageVideoFetcher
                         }
                         Img img = new Img("" + header, "" + path, cursor.getString(data), "" + pos, media_type);
                         img.setPosition(pos);
-                        if (preSelectedUrls.contains(img.getUrl())) {
+                        if (preSelectedUrls.contains(img.getContentUrl())) {
                             img.setSelected(true);
                             selectionList.add(img);
                         }

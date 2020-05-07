@@ -31,7 +31,8 @@ public class Options implements Serializable {
     public static final int SCREEN_ORIENTATION_USER_PORTRAIT = 12;
     public static final int SCREEN_ORIENTATION_FULL_USER = 13;
     public static final int SCREEN_ORIENTATION_LOCKED = 14;
-    private ArrayList<String> preSelectedUrls = new ArrayList<>();
+    private ArrayList<String> preSelectedUrls = new ArrayList<>(); // These are uri paths
+    private ArrayList<String> newlyCreatedPaths = new ArrayList<>(); // These are uri paths
 
     @ScreenOrientation
     private int screenOrientation = SCREEN_ORIENTATION_UNSPECIFIED;
@@ -135,6 +136,14 @@ public class Options implements Serializable {
         check();
         this.screenOrientation = screenOrientation;
         return this;
+    }
+
+    public ArrayList<String> getNewlyCreatePath() {
+        return newlyCreatedPaths;
+    }
+
+    public void setNewlyCreatePath(ArrayList<String> newlyCreatedPaths) {
+        this.newlyCreatedPaths = newlyCreatedPaths;
     }
 
     @Retention(RetentionPolicy.SOURCE)

@@ -4,6 +4,7 @@ import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.ObjectAnimator;
 import android.app.Activity;
+import android.content.ContentValues;
 import android.content.Intent;
 import android.database.Cursor;
 import android.graphics.Color;
@@ -80,6 +81,7 @@ public class Pix extends AppCompatActivity implements View.OnTouchListener {
     private static final String OPTIONS = "options";
     private static final int sTrackSnapRange = 5;
     public static String IMAGE_RESULTS = "image_results";
+    public static String IMAGE_RESULTS_CREATED = "image_results_created";
     public static float TOPBAR_HEIGHT;
     private static int maxVideoDuration = 40000;
     private static ImageVideoFetcher imageVideoFetcher;
@@ -115,6 +117,7 @@ public class Pix extends AppCompatActivity implements View.OnTouchListener {
     private boolean LongSelection = false;
     private Options options = null;
     private TextView selection_count;
+    private ArrayList newlyCreatedPath = new ArrayList();
     private RecyclerView.OnScrollListener mScrollListener = new RecyclerView.OnScrollListener() {
 
         @Override
@@ -351,11 +354,12 @@ public class Pix extends AppCompatActivity implements View.OnTouchListener {
     public void returnObjects() {
         ArrayList<String> list = new ArrayList<>();
         for (Img i : selectionList) {
-            list.add(i.getUrl());
+            list.add(i.getContentUrl());
             // Log.e("Pix images", "img " + i.getUrl());
         }
         Intent resultIntent = new Intent();
         resultIntent.putStringArrayListExtra(IMAGE_RESULTS, list);
+        resultIntent.putStringArrayListExtra(IMAGE_RESULTS_CREATED, newlyCreatedPath);
         setResult(Activity.RESULT_OK, resultIntent);
         finish();
     }
@@ -412,16 +416,16 @@ public class Pix extends AppCompatActivity implements View.OnTouchListener {
         colorPrimaryDark =
                 ResourcesCompat.getColor(getResources(), R.color.colorPrimaryPix, getTheme());
         camera = findViewById(R.id.camera_view);
-        camera.setMode(Mode.PICTURE);
         if (options.isExcludeVideos()) {
             camera.setAudio(Audio.OFF);
         }
+        camera.setMode(Mode.PICTURE);
         SizeSelector width = SizeSelectors.minWidth(Utility.WIDTH);
         SizeSelector height = SizeSelectors.minHeight(Utility.HEIGHT);
-        SizeSelector dimensions = SizeSelectors.and(width, height); // Matches sizes bigger than width X height
-        SizeSelector ratio = SizeSelectors.aspectRatio(AspectRatio.of(1, 2), 0); // Matches 1:2 sizes.
-        SizeSelector ratio3 = SizeSelectors.aspectRatio(AspectRatio.of(2, 3), 0); // Matches 2:3 sizes.
-        SizeSelector ratio2 = SizeSelectors.aspectRatio(AspectRatio.of(9, 16), 0); // Matches 9:16 sizes.
+        SizeSelector dimensions = SizeSelectors.and(width, height); // Matches sizes bigger than 1000x2000.
+        SizeSelector ratio = SizeSelectors.aspectRatio(AspectRatio.of(1, 2), 0); // Matches 1:1 sizes.
+        SizeSelector ratio3 = SizeSelectors.aspectRatio(AspectRatio.of(2, 3), 0); // Matches 1:1 sizes.
+        SizeSelector ratio2 = SizeSelectors.aspectRatio(AspectRatio.of(9, 16), 0); // Matches 1:1 sizes.
         SizeSelector result = SizeSelectors.or(
                 SizeSelectors.and(ratio, dimensions),
                 SizeSelectors.and(ratio2, dimensions),
@@ -440,21 +444,15 @@ public class Pix extends AppCompatActivity implements View.OnTouchListener {
         camera.addCameraListener(new CameraListener() {
             @Override
             public void onPictureTaken(PictureResult result) {
-                File dir = new File(Environment.getExternalStorageDirectory(), options.getPath());
-                if (!dir.exists()) {
-                    dir.mkdirs();
-                }
-                File photo = new File(dir, "IMG_"
-                        + new SimpleDateFormat("yyyyMMdd_HHmmSS", Locale.ENGLISH).format(new Date())
-                        + ".jpg");
-
-                result.toFile(photo, new FileCallback() {
+                final Img imageFile = createFile(Environment.DIRECTORY_PICTURES);
+                final String path = imageFile.getUrl();
+                result.toFile(new File(path), new FileCallback() {
                     @Override
                     public void onFileReady(@Nullable File photo) {
                         Utility.vibe(Pix.this, 50);
-                        Img img = new Img("", "", photo.getAbsolutePath(), "", 1);
-                        selectionList.add(img);
-                        Utility.scanPhoto(Pix.this, photo);
+                        Uri uri = Utility.scanPhoto(Pix.this, photo);
+                        Img img = new Img("", imageFile.getContentUrl(), photo.getAbsolutePath(), "", 1);
+                        selectionList.add(imageFile);
                         returnObjects();
                     }
                 });
@@ -587,8 +585,90 @@ public class Pix extends AppCompatActivity implements View.OnTouchListener {
                 options.getPreSelectedUrls().remove(i);
             }
         }
+        newlyCreatedPath = options.getNewlyCreatePath();
         DrawableCompat.setTint(selection_back.getDrawable(), colorPrimaryDark);
         updateImages();
+    }
+
+
+    private String getMediaDirPath(String type) {
+        String path = type + File.separator + options.getPath();
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            File file = new File(
+                    Environment.getExternalStoragePublicDirectory(type),
+                    options.getPath()
+            );
+            if (!file.exists()) {
+                file.mkdirs();
+            }
+            path = file.getAbsolutePath();
+        }
+        return path;
+    }
+
+
+    private Img createFile(String type) {
+        String result = null;
+        String extension = ".jpg";
+        String mimeType = "image/*";
+        String absolutePath = "";
+        Img newImage = null;
+        int mediaType = 1;
+        if (Environment.DIRECTORY_MOVIES.equals(type)) {
+            extension = ".mp4";
+            mimeType = "video/mp4";
+            mediaType = 3;
+        }
+        try {
+            String relPath = getMediaDirPath(type);
+            Uri contentURI = MediaStore.Images.Media.EXTERNAL_CONTENT_URI;
+            String fileName = ("IMG_" + new SimpleDateFormat(
+                    "yyyyMMdd_HHmmss",
+                    Locale.getDefault()
+            ).format(new Date())) + extension;
+
+            ContentValues contentVal = new ContentValues();
+            contentVal.put(MediaStore.MediaColumns.DISPLAY_NAME, fileName);
+            contentVal.put(MediaStore.MediaColumns.MIME_TYPE, mimeType);
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                contentVal.put(MediaStore.MediaColumns.RELATIVE_PATH, relPath);
+            } else {
+                File dir = new File(relPath);
+                File filePath = new File(relPath, fileName);
+//                if (!filePath.exists()) {
+//                    filePath.createNewFile();
+//                }
+                contentVal.put(MediaStore.MediaColumns.DATA, filePath.getAbsolutePath());
+            }
+            Uri uri = getContentResolver().insert(contentURI, contentVal);
+            newImage = new Img("", uri.toString(), getRealPathFromURI(uri, type), "", mediaType);
+        } catch (Exception ex) {
+            Exception exception = ex;
+        }
+        newlyCreatedPath.add(newImage.getContentUrl());
+        return newImage;
+    }
+
+    private String getRealPathFromURI(Uri contentUri, String type) {
+        String columnName = MediaStore.Images.Media.DATA;
+        if (type == Environment.DIRECTORY_MOVIES) {
+            columnName = MediaStore.Video.Media.DATA;
+        }
+        Cursor cursor = null;
+        try {
+            String[] proj = {columnName};
+            cursor = getContentResolver().query(contentUri, proj, null, null, null);
+            int column_index = cursor.getColumnIndexOrThrow(columnName);
+            cursor.moveToFirst();
+            return cursor.getString(column_index);
+        } catch (Exception e) {
+            return "";
+        } finally {
+            if (cursor != null) {
+                cursor.close();
+            }
+        }
     }
 
     private void onClickMethods() {
@@ -618,17 +698,11 @@ public class Pix extends AppCompatActivity implements View.OnTouchListener {
                 if (options.isExcludeVideos()) {
                     return false;
                 }
+                File file = new File(createFile(Environment.DIRECTORY_MOVIES).getUrl());
                 camera.setMode(Mode.VIDEO);
-                File dir = new File(Environment.getExternalStorageDirectory(), options.getPath());
-                if (!dir.exists()) {
-                    dir.mkdirs();
-                }
-                File video = new File(dir, "VID_"
-                        + new SimpleDateFormat("yyyyMMdd_HHmmSS", Locale.ENGLISH).format(new Date())
-                        + ".mp4");
                 video_counter_progressbar.setMax(maxVideoDuration / 1000);
                 video_counter_progressbar.invalidate();
-                camera.takeVideo(video, maxVideoDuration);
+                camera.takeVideo(new File(file.getPath()), maxVideoDuration);
                 return true;
             }
         });
@@ -772,7 +846,7 @@ public class Pix extends AppCompatActivity implements View.OnTouchListener {
             Img img =
                     new Img("" + header, "" + path, cursor.getString(data), "" + pos, cursor.getInt(mediaType));
             img.setPosition(pos);
-            if (options.getPreSelectedUrls().contains(img.getUrl())) {
+            if (options.getPreSelectedUrls().contains(img.getContentUrl())) {
                 img.setSelected(true);
                 selectionList.add(img);
             }

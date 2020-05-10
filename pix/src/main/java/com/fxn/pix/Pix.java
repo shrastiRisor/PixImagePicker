@@ -61,9 +61,11 @@ import com.otaliastudios.cameraview.controls.Audio;
 import com.otaliastudios.cameraview.controls.Facing;
 import com.otaliastudios.cameraview.controls.Flash;
 import com.otaliastudios.cameraview.controls.Mode;
+import com.otaliastudios.cameraview.internal.WorkerHandler;
 import com.otaliastudios.cameraview.size.AspectRatio;
 import com.otaliastudios.cameraview.size.SizeSelector;
 import com.otaliastudios.cameraview.size.SizeSelectors;
+import com.otaliastudios.cameraview.video.FileUriCallback;
 
 import java.io.File;
 import java.text.SimpleDateFormat;
@@ -445,13 +447,10 @@ public class Pix extends AppCompatActivity implements View.OnTouchListener {
             @Override
             public void onPictureTaken(PictureResult result) {
                 final Img imageFile = createFile(Environment.DIRECTORY_PICTURES);
-                final String path = imageFile.getUrl();
-                result.toFile(new File(path), new FileCallback() {
+                result.toFile(getApplicationContext(), Uri.parse(imageFile.getContentUrl()), new FileUriCallback() {
                     @Override
-                    public void onFileReady(@Nullable File photo) {
+                    public void onFileReady(@Nullable Uri fileUri) {
                         Utility.vibe(Pix.this, 50);
-                        Uri uri = Utility.scanPhoto(Pix.this, photo);
-                        Img img = new Img("", imageFile.getContentUrl(), photo.getAbsolutePath(), "", 1);
                         selectionList.add(imageFile);
                         returnObjects();
                     }
